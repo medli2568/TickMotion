@@ -452,9 +452,9 @@ The PAA starts by clicking on the button: “Pixel Activity Analysis”. As a re
 4. Analyze: Clicking on this button will start the analysis process and the final data – black and white PNG image will be saved in the selected folder. 
 * Note: Usually, when analyzing 1 minute long video file, recorded at 60 fps with FS set to 5, the whole process took around 35-40 seconds.
 
-6. Show Output Folder: The Output Folder can be easily find by clicking on the button "Show Output Folder".
+5. Show Output Folder: The Output Folder can be easily find by clicking on the button "Show Output Folder".
 
-7. Back: This allows the user to return on the main menu.
+6. Back: This allows the user to return on the main menu.
 
 
 
