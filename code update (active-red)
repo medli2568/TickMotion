@@ -1,0 +1,645 @@
+from tkinter import Button, Tk, Label, Entry, filedialog, messagebox, IntVar
+from tkinter.scrolledtext import ScrolledText
+import os
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import threading
+import time
+
+
+class InsectMotion:
+    def __init__(self, master):
+        self.load_video_for_prediction = self.load_video_for_prediction  # Fix: Set the function reference
+        self.select_video_for_prediction = self.select_video_for_prediction
+        self.cap = None
+        self.output_folder = None
+        self.selected_points = []
+        self.right_entry = None
+        self.left_entry = None
+        self.top_entry = None
+        self.bottom_entry = None
+        self.num_roi = None  # Define num_roi as an instance attribute
+        self.master = master
+        self.master.title("InsectMotion")
+        self.frame_params = None
+
+        # New attributes for storing default values
+        self.default_activity_threshold = 80
+        self.default_frame_skip = 0
+
+        # Set fixed dimensions for the window (width x height)
+        window_width = 250
+        window_height = 350
+        self.master.geometry(f"{window_width}x{window_height}")
+
+        # Make the window non-resizable
+        self.master.resizable(False, False)
+
+        # Initialize IntVar variables
+        self.activity_threshold_var = IntVar()
+        self.frame_skip_var = IntVar()
+
+        self.create_start_step()
+
+    def center_window(self, fixed_size=None):
+        if fixed_size:
+            self.master.geometry(fixed_size)
+        else:
+            window_width = 250
+            button_height = int((self.master.winfo_screenheight() - 50) / 5)
+
+            # Calculate total height occupied by buttons
+            total_button_height = 0
+            for widget in self.master.winfo_children():
+                if isinstance(widget, Button):
+                    total_button_height += button_height
+
+            # Set fixed window height
+            window_height = 350
+
+            screen_width = self.master.winfo_screenwidth()
+            screen_height = self.master.winfo_screenheight()
+
+            x_position = (screen_width - window_width) // 2
+            y_position = (screen_height - window_height) // 2
+
+            self.master.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+
+    def clear_frame(self):
+        for widget in self.master.winfo_children():
+            widget.destroy()
+
+    def create_start_step(self):
+        self.clear_frame()
+
+        (Label(self.master, text="Welcome to InsectMotion!", font=("Arial", 11, "normal"))
+         .grid(row=0, column=0, columnspan=4, pady=0, padx=10, sticky="nsew"))
+
+        # Set a fixed button height
+        button_height = int((self.master.winfo_screenheight() - 50) / 5)
+
+        buttons = [
+            (Button(self.master, text="Graphical Analysis", command=self.show_analysis_buttons, bg="light green",
+                    font=("Arial", 10, "normal"), height=button_height)),
+            (Button(self.master, text="Pixel Activity Analysis", command=self.show_ai_prediction_buttons,
+                    bg="light blue",
+                    font=("Arial", 10, "normal"), height=button_height)),
+            (Button(self.master, text="About", command=self.show_about, bg="white", font=("Arial", 10, "normal"),
+                    height=button_height)),
+            (Button(self.master, text="Exit", command=self.master.quit, bg="white", font=("Arial", 10, "normal"),
+                    height=button_height))
+        ]
+
+        for idx, button in enumerate(buttons, start=1):
+            button.grid(row=idx, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        # Set column weights to make them expand
+        for i in range(4):
+            self.master.columnconfigure(i, weight=1)
+
+        # Set row weights based on the number of buttons
+        for i in range(len(buttons) + 1):
+            self.master.rowconfigure(i, weight=1)
+
+        # Remove fixed size for the window to allow it to expand
+        self.master.geometry("")  # Remove fixed size
+
+        self.center_window()
+
+    def show_ai_prediction_buttons(self):
+        self.clear_frame()
+
+        (Label(self.master, text="Pixel Activity Analysis", font=("Arial", 11, "normal"))
+         .grid(row=0, column=0, columnspan=4, pady=0, padx=10, sticky="nsew"))
+
+        choose_video_button = Button(self.master, text="Choose Video", command=self.choose_video_for_prediction,
+                                     bg="light blue", font=("Arial", 10, "normal"))
+        choose_video_button.grid(row=1, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        select_output_button = Button(self.master, text="Select Output Folder",
+                                      command=self.select_output_folder_for_ai_prediction,
+                                      bg="white", font=("Arial", 10, "normal"))
+        select_output_button.grid(row=2, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        threshold_label = Label(self.master, text="Threshold %:", font=("Arial", 9, "normal"))
+        threshold_label.grid(row=3, column=0, columnspan=2, padx=0, pady=0, sticky="w")
+
+        threshold_entry = Entry(self.master, textvariable=self.activity_threshold_var, font=("Arial", 10, "normal"))
+        threshold_entry.grid(row=3, column=2, columnspan=2, pady=0, sticky="ew")
+
+        frame_skip_label = Label(self.master, text="Frame skip:", font=("Arial", 9, "normal"))
+        frame_skip_label.grid(row=4, column=0, columnspan=2, padx=0, pady=0, sticky="w")
+
+        frame_skip_entry = Entry(self.master, textvariable=self.frame_skip_var, font=("Arial", 10, "normal"))
+        frame_skip_entry.grid(row=4, column=2, columnspan=2, pady=0, sticky="ew")
+
+        # Add "Update Settings" button and set default values
+        update_settings_button = Button(self.master, text="Update Settings", command=self.update_ai_settings,
+                                        bg="orange", font=("Arial", 10, "normal"))
+        update_settings_button.grid(row=5, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        # Set default values for activity threshold and frame skip
+        self.activity_threshold_var.set(self.default_activity_threshold)
+        self.frame_skip_var.set(self.default_frame_skip)
+
+        analyze_button = Button(self.master, text="Analyze",
+                                command=lambda: self.process_video_for_prediction(
+                                    activity_threshold=self.activity_threshold_var.get(),
+                                    frame_skip=max(0, self.frame_skip_var.get())),  # Ensure frame_skip is >= 0
+                                bg="light green", font=("Arial", 10, "normal"))
+        analyze_button.grid(row=6, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        show_output_button = Button(self.master, text="Show Output Folder", command=self.show_folder, bg="white",
+                                    font=("Arial", 10, "normal"))
+        show_output_button.grid(row=7, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        back_button = Button(self.master, text="Back", font=("Arial", 10, "normal"),
+                             command=self.create_start_step, bg="grey", width=15)
+        back_button.grid(row=8, column=0, columnspan=4, pady=0, sticky="nsew")
+
+        # Set column weights to make them expand
+        for i in range(4):
+            self.master.columnconfigure(i, weight=1)
+
+        # Set row weights
+        self.master.rowconfigure(0, weight=3)
+        self.master.rowconfigure(1, weight=1)
+        self.master.rowconfigure(2, weight=1)
+        self.master.rowconfigure(3, weight=1)
+        self.master.rowconfigure(4, weight=1)
+        self.master.rowconfigure(5, weight=1)
+        self.master.rowconfigure(6, weight=1)
+        self.master.rowconfigure(7, weight=1)
+        self.master.rowconfigure(8, weight=1)
+
+        self.center_window()
+
+    def update_ai_settings(self):
+        # Update the default values based on the current entries
+        self.default_activity_threshold = self.activity_threshold_var.get()
+        self.default_frame_skip = max(0, self.frame_skip_var.get())
+        messagebox.showinfo("Info", "Settings updated successfully!")
+
+    def choose_video_for_prediction(self):
+        try:
+            file_path = filedialog.askopenfilename(title="Select a Video File",
+                                                   filetypes=[("Video Files", "*.mp4 *.avi *.mov")])
+
+            if file_path:
+                self.cap = cv2.VideoCapture(file_path)
+                messagebox.showinfo("Info", f"Video selected for analysis: {file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load video: {e}")
+
+    def load_video_for_prediction(self, file_path):
+        # This function is called to load the video for prediction
+        try:
+            self.cap = cv2.VideoCapture(file_path)
+            # Schedule the first frame processing after a short delay
+            self.master.after(100, self.process_video_for_prediction)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load video: {e}")
+
+    def process_video_for_prediction(self, activity_threshold=80, frame_skip=0):
+        if self.output_folder is None:
+            messagebox.showerror("Error", "Please select an output folder for AI Prediction.")
+            return
+        try:
+            total_frames = 0
+            frames = []
+
+            first_frame = None
+
+            while True:
+                ret, frame = self.cap.read()
+                if not ret:
+                    break
+
+                total_frames += 1
+
+                # Capture the first frame as background
+                if first_frame is None:
+                    first_frame = frame
+
+                # Convert frame to grayscale and append
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                if frame_skip > 0 and total_frames % frame_skip == 0:
+                    frames.append(gray_frame)
+                elif frame_skip == 0:
+                    frames.append(gray_frame)
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+            self.cap.release()
+            cv2.destroyAllWindows()
+
+            if not frames:
+                messagebox.showerror("Error", "No frames available for processing. Please check frame_skip value.")
+                return
+
+            # Stack all frames along a new axis to create a 3D array
+            frames_array = np.stack(frames, axis=0)
+
+            # Calculate the standard deviation across all frames for each pixel
+            std_dev_frame = np.std(frames_array, axis=0)
+
+            # Apply activity thresholding
+            activity_threshold_value = np.percentile(std_dev_frame, activity_threshold)
+            active_pixels = np.zeros_like(std_dev_frame, dtype=np.uint8)
+            active_pixels[std_dev_frame >= activity_threshold_value] = 1  # Active pixels = 1
+
+            # Prepare the first frame as the background (convert to color if grayscale)
+            if len(first_frame.shape) == 2:  # If grayscale
+                background_frame = cv2.cvtColor(first_frame, cv2.COLOR_GRAY2BGR)
+            else:
+                background_frame = first_frame
+
+            # Highlight active pixels in red on top of the background
+            overlay = background_frame.copy()
+            overlay[active_pixels == 1] = [0, 0, 255]  # Red for active pixels
+
+            # Save the final image
+            final_image_filename = os.path.join(self.output_folder, "active_pixels_overlay.png")
+            cv2.imwrite(final_image_filename, overlay)
+
+            messagebox.showinfo("Info", f"Active pixels highlighted and saved to {self.output_folder}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error during video processing: {e}")
+            raise  # Reraise the exception to see more details in the console
+        finally:
+            self.center_window()
+
+    def select_output_folder_for_ai_prediction(self):
+        self.output_folder = filedialog.askdirectory(title="Select Output Folder for AI Prediction")
+        if self.output_folder:
+            messagebox.showinfo("Info", f"AI Prediction output folder: {self.output_folder} selected")
+
+    def analyze_for_prediction(self):
+        self.highlight_active_pixels()
+
+    def select_video_for_prediction(self):
+        try:
+            file_path = filedialog.askopenfilename(title="Select a Video File",
+                                                   filetypes=[("Video Files", "*.mp4 *.avi *.mov")])
+
+            if file_path:
+                # Start a new thread for loading the video
+                threading.Thread(target=self.load_video_for_prediction, args=(file_path,)).start()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load video: {e}")
+
+    def highlight_active_pixels(self, active_percentage_threshold=80):
+        if hasattr(self, 'cap') and self.output_folder and len(self.selected_points) == self.num_roi:
+            active_pixels_frames = []
+            total_frames = 0
+
+            first_frame = True
+            threshold = 0  # Initialize threshold before the loop
+
+            while True:
+                ret, frame = self.cap.read()
+                if not ret:
+                    break
+
+                total_frames += 1
+
+                active_pixels = np.zeros_like(frame)
+
+                for idx, (point_x, point_y) in enumerate(self.selected_points, start=1):
+                    x_left, x_right, y_top, y_bottom = self.frame_params['left'], self.frame_params['right'], \
+                        self.frame_params['top'], self.frame_params['bottom']
+                    roi = frame[point_y - y_top:point_y + y_bottom, point_x - x_left:point_x + x_right]
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    avg_intensity = np.mean(gray_roi)
+
+                    # Set threshold based on the first frame intensity
+                    if first_frame:
+                        threshold = avg_intensity * 1.1
+                        first_frame = False
+
+                    # Highlight active pixels
+                    active_pixels[(gray_roi > threshold).nonzero()] = [255, 255, 255]
+
+                active_pixels_frames.append(active_pixels)
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+            self.cap.release()
+            cv2.destroyAllWindows()
+
+            # Calculate the minimum required frames to be considered as active
+            min_active_frames = int(active_percentage_threshold / 100 * total_frames)
+
+            # Create the final image with active pixels highlighted
+            final_image = np.zeros_like(active_pixels_frames[0])
+            for frame in active_pixels_frames:
+                final_image += frame
+
+            final_image[final_image < 255 * min_active_frames] = 0
+            final_image[final_image == 255] = 255
+
+            # Save the final image
+            final_image_filename = os.path.join(self.output_folder, "active_pixels.png")
+            cv2.imwrite(final_image_filename, final_image)
+
+            messagebox.showinfo("Info", f"Active pixels highlighted and saved to {self.output_folder}")
+        else:
+            if not hasattr(self, 'cap'):
+                messagebox.showerror("Error", "Please select a video file.")
+            elif len(self.selected_points) != self.num_roi:
+                messagebox.showerror("Error", f"Please select exactly {self.num_roi} points for the ROIs.")
+            else:
+                messagebox.showerror("Error", "Number of ROIs should be between 1 and 10.")
+
+        self.center_window()
+
+        # Configure row and column weights for the specific rows
+        self.master.rowconfigure(0, weight=50)
+        self.master.rowconfigure(1, weight=50)  # Adjusted weight for the row containing the button
+        self.master.rowconfigure(2, weight=50)
+        self.master.rowconfigure(3, weight=50)
+        self.master.rowconfigure(4, weight=50)
+
+    def show_analysis_buttons(self):
+        self.clear_frame()
+
+        (Label(self.master, font=("Arial", 10, "normal"), text="Number of ROI (max = 10):")
+         .grid(row=0, column=0, padx=2, pady=0, columnspan=3))
+        num_roi_entry = Entry(self.master, width=11)
+        num_roi_entry.grid(row=0, column=3, padx=5, pady=5, columnspan=4, sticky="nsew")
+        (Button(self.master, font=("Arial", 10, "normal"), text="Choose video and ROI", bg="light blue",
+                command=lambda: self.select_video(num_roi_entry.get()))
+         .grid(row=1, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+        (Button(self.master, font=("Arial", 10, "normal"), text="Select Output Folder",
+                command=self.select_output_folder)
+         .grid(row=2, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+        (Label(self.master, font=("Arial", 10, "normal"), text="-x:")
+         .grid(row=3, column=0, padx=2, pady=0, sticky="nsew"))
+        self.left_entry = Entry(self.master, width=12)
+        self.left_entry.grid(row=4, column=0, padx=2, pady=0, sticky="nsew")
+
+        (Label(self.master, font=("Arial", 10, "normal"), text="+x:")
+         .grid(row=3, column=1, padx=2, pady=0, sticky="nsew"))
+        self.right_entry = Entry(self.master, width=12)
+        self.right_entry.grid(row=4, column=1, padx=2, pady=0, sticky="nsew")
+
+        (Label(self.master, font=("Arial", 10, "normal"), text="+y:")
+         .grid(row=3, column=2, padx=2, pady=0, sticky="nsew"))
+        self.top_entry = Entry(self.master, width=12)
+        self.top_entry.grid(row=4, column=2, padx=2, pady=0, sticky="nsew")
+
+        (Label(self.master, font=("Arial", 10, "normal"), text="-y:")
+         .grid(row=3, column=3, padx=2, pady=0, sticky="nsew"))
+        self.bottom_entry = Entry(self.master, width=12)
+        self.bottom_entry.grid(row=4, column=3, padx=2, pady=0, sticky="nsew")
+
+        (Button(self.master, font=("Arial", 10, "normal"), text="Update Frame Parameters", bg="orange",
+                command=self.update_frame_params)
+         .grid(row=5, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+        (Button(self.master, font=("Arial", 10, "normal"), text="Analyze", bg="light green",
+                command=self.generate_graph_and_save_data)
+         .grid(row=6, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+        (Button(self.master, font=("Arial", 10, "normal"), text="Show Output Folder", command=self.show_folder)
+         .grid(row=7, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+        (Button(self.master, font=("Arial", 10, "normal"), text="Back", command=self.create_start_step,
+                bg="grey", width=15)
+         .grid(row=8, column=0, padx=0, pady=0, columnspan=4, sticky="nsew"))
+
+        self.center_window()
+
+        # Configure row and column weights to center the widgets
+        for i in range(4):
+            self.master.columnconfigure(i, weight=1)
+
+        self.master.rowconfigure(0, weight=1)
+        self.master.rowconfigure(1, weight=1)
+        self.master.rowconfigure(2, weight=1)
+        self.master.rowconfigure(3, weight=1)
+        self.master.rowconfigure(4, weight=1)
+        self.master.rowconfigure(5, weight=1)
+        self.master.rowconfigure(6, weight=1)
+        self.master.rowconfigure(7, weight=1)
+        self.master.rowconfigure(8, weight=1)
+
+    def show_about(self):
+        # Not a static method, ignore
+        about_window = Tk()
+        about_window.title("InsectMotion Manual")
+
+        about_text = """
+
+A. Graphical analysis (GA)
+The GA begins by clicking on the button: “Graphical Analysis”. The final outcome of the GA includes a graph showing the amplitude of contractions over time (frames) in the selected region of interest (ROI); text files containing data of each ROI featured in the graph; and PNG images representing each analyzed segments of the video file. 
+
+1. Number of ROIs: In the first step, you have to type the number of Regions of Interest (ROI), between 1 and 10 (mostly due to maintain the whole analysis process smooth). Each ROI will undergo analysis separately. More than 10 ROI cannot be analyzed at the same time. 
+
+2. Select Video and ROI: In this step navigate InsectMotion to the folder and select (double-click) a video file. InsectMotion supports multiple file types: .mp4, .avi, .mov. Continue in this step by selecting (left-click) the ROI. Application will automatically stop the selecting process and the video file will be closed once the number of selected ROI corresponds the number established in the previous step. 
+* Note: Please, DO NOT close the video file during selection process. If you intend to change selected ROI, let the app close it automatically (explained above) and repeat this step directly in the app. The graph shows results from any movement captured on the video. Try to select all ROI from segments of the video, where movements are clear, muscle contractions are repetitive and/or the background bias is the lowest.
+
+3. Frame Parameters (dimensions): To enhance the efficiency of the analysis, and to target specifically contracting or moving segments of a video file, squares are created around each ROI. The frame size is customizable, with the default dimensions set as follows (in pixels): "-x" = 50, "+x" = 50, "+y" = 50, "-y" = 50. Selecting alternative dimensions is confirmed by clicking the button: "Update Frame Parameters".
+* Note: It is essential to emphasize that for optimal muscle contraction analysis, selecting a frame size that closely surrounds the focused area (minimizing background interference) is crucial.
+
+4. Set Output Folder: In this step, navigate to the output folder, where all the results (graph, text files, and PNG images) will be saved.
+* Note: Files from one analysis will be named corresponding to each ROI separately. Please remind that output files from multiple analyses will always have the same name, so it is necessary to save the data to different folders. 
+
+5. Analyze: The graph is automatically generated by analyzing pixel activity within the selected ROI and specified frame dimensions from the previous steps. This graph incorporates data for all ROI, with the video file duration set to a predetermined 10 minute length (maximum). Data for each ROI in the graph are normalized based on the pixel intensity of the first frame, ensuring that the initial x value for every ROI is always 0. The system automatically saves all data in the designated Output Folder. PNG images are derived from the initial video frame to prevent blurriness. The whole analysis took around 30 seconds per 1 minute long video (recorded at 60 fps) and 1 roi selected.
+* Note: PNG images are created to facilitate the video analysis during the setup of frame dimensions in preceding steps. Once the analysis is completed, you can revise the frame dimensions around selected ROIs and repeat the analysis, if needed.
+
+6. Show Output Folder: The Output Folder can be easily find by clicking on the button "Show Output Folder".
+
+7. Back: This allows the user to return on the main menu.
+
+                        ******************************
+
+B. Pixel Activity Analysis (PAA)
+The PAA starts by clicking on the button: “Pixel Activity Analysis”. As a result, InsectMotion provides a PNG image of active and inactive pixels from the video. It calculates the activity of each pixel separately, when it met the preset settings, active pixels will be shown as white, otherwise as black. 
+
+1. Choose Video: The first step in the PAA is similar to the GA, navigating to the folder and selecting a video file (again, multiple video file types are supported). Selecting of ROI is not needed in this step, as the PNG will be generated for the whole video automatically.
+
+2. Select Output Folder: In this step, navigate to the output folder, where the PNG image will be saved.
+* Note that the output PNG will be named “active_pixels” in every analysis. Therefore multiple analyses have to be saved in different folders, or renamed after analysis manually.
+
+3. Update Settings: In this step you can customize your video analysis by selecting Threshold percentage (t%) and Frame skip (FS) parameters. t% refers to the activity of pixels per time and is preset to 80. When selecting t% to 80, it means that every pixel that is active for at least 80% of the duration of the video recording will be shown as white, otherwise as black. This feature allows you to reduce the background bias to minimum by setting higher t%. Other parameter – FS refers to the number of frames that will be analyzed. Normally the FS is preset to 0; it means every single video frame will be analyzed. However, when recording at 60 fps (optional) we recommend to set the FS at least to 5, to reduce the analysis time without losing a quality of the final result. Confirm selected parameters by clicking on the button: “Update Settings”.
+* Please be aware, when comparing multiple videos (ex. control and test group), it is highly recommended to use the same parameters (t%, FS) in every analysis to obtain the most precise results.
+
+4. Analyze: Clicking on this button will start the analysis process and the final data – black and white PNG image will be saved in the selected folder. 
+* Note: Usually, when analyzing 1 minute long video file, recorded at 60 fps with FS set to 5, the whole process took around 35-40 seconds.
+
+5. Show Output Folder: The Output Folder can be easily find by clicking on the button "Show Output Folder".
+
+6. Back: This allows the user to return on the main menu.
+
+
+
+
+        """
+
+        text_widget = ScrolledText(about_window, wrap='word', width=80, height=190)
+        text_widget.pack(expand=True, fill='both')
+        text_widget.insert('1.0', about_text)
+
+        text_widget.config(state='disabled')  # Make the text widget read-only
+
+    def select_video(self, num_roi):
+        try:
+            num_roi = int(num_roi)
+            if 1 <= num_roi <= 10:
+                file_path = filedialog.askopenfilename(title="Select a Video File",
+                                                       filetypes=[("Video Files", "*.mp4 *.avi *.mov")])
+
+                if file_path:
+                    # Start a new thread for loading the video
+                    threading.Thread(target=self.load_video, args=(file_path, num_roi)).start()
+            else:
+                messagebox.showerror("Error", "Number of ROIs should be between 1 and 10.")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid input. Please enter a valid number.")
+
+    def load_video(self, file_path, num_roi):
+        # This function runs in a separate thread to load the video
+        self.cap = cv2.VideoCapture(file_path)
+        self.num_roi = num_roi
+        self.selected_points = []
+        self.create_roi_selection_window()
+
+    def create_roi_selection_window(self):
+        cv2.namedWindow("Select Points", cv2.WINDOW_NORMAL)
+        cv2.setMouseCallback('Select Points', self.select_points)
+
+        while True:
+            ret, frame = self.cap.read()
+            if not ret:
+                break
+
+            for point_x, point_y in self.selected_points:
+                cv2.circle(frame, (point_x, point_y), 5, (0, 255, 0), -1)  # Green circle
+
+            cv2.imshow("Select Points", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q') or len(self.selected_points) >= self.num_roi:
+                break
+
+        cv2.destroyAllWindows()
+
+    def select_points(self, event, x, y, flags, param, ):
+        _ = flags, param  # Unused parameters, ignore
+        if event == cv2.EVENT_LBUTTONDOWN and len(self.selected_points) < self.num_roi:
+            self.selected_points.append((x, y))
+            if len(self.selected_points) == self.num_roi:
+                cv2.destroyWindow("Select Points")
+
+    def update_frame_params(self):
+        try:
+            left = int(self.left_entry.get())
+            right = int(self.right_entry.get())
+            top = int(self.top_entry.get())
+            bottom = int(self.bottom_entry.get())
+            self.frame_params = {'left': left, 'right': right, 'top': top, 'bottom': bottom}
+        except ValueError:
+            messagebox.showerror("Error", "Invalid input. Please enter valid frame parameters.")
+
+        if self.frame_params:
+            messagebox.showinfo("Info", "Frame dimensions have been set")
+
+    def select_output_folder(self):
+        self.output_folder = filedialog.askdirectory(title="Select Output Folder")
+        if self.output_folder:
+            messagebox.showinfo("Info", f"Folder: {self.output_folder} successfully selected")
+
+    def show_folder(self):
+        if self.output_folder:
+            try:
+                os.startfile(str(self.output_folder))
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open folder: {e}")
+        else:
+            messagebox.showerror("Error", "Output folder is not selected yet.")
+
+    def generate_graph_and_save_data(self):
+        if hasattr(self, 'cap') and self.output_folder and len(self.selected_points) <= 10 and len(
+                self.selected_points) == self.num_roi:
+            roi_frames = [[] for _ in range(self.num_roi)]
+
+            frame_number = 0  # Variable to keep track of the frame number
+            start_time = time.time()  # Record the start time
+
+            first_frame_values = [None] * self.num_roi  # Store the values of the first frame for each ROI
+
+            while True:
+                ret, frame = self.cap.read()
+                if not ret:
+                    break
+
+                frame_number += 1  # Increment frame number for each frame read
+
+                for idx, (point_x, point_y) in enumerate(self.selected_points, start=1):
+                    x_left, x_right, y_top, y_bottom = self.frame_params['left'], self.frame_params['right'], \
+                        self.frame_params['top'], self.frame_params['bottom']  # Ignore duplication
+                    roi = frame[point_y - y_top:point_y + y_bottom, point_x - x_left:point_x + x_right]
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                    avg_intensity = np.mean(gray_roi)
+
+                    if first_frame_values[idx - 1] is None:
+                        first_frame_values[idx - 1] = avg_intensity
+
+                    normalized_intensity = avg_intensity - first_frame_values[idx - 1]
+                    roi_frames[idx - 1].append(normalized_intensity)
+
+                    # Resize the ROI to a larger dimension
+                    new_width = 3 * roi.shape[1]  # Adjust the multiplier as needed
+                    new_height = 3 * roi.shape[0]  # Adjust the multiplier as needed
+                    roi = cv2.resize(roi, (new_width, new_height))
+
+                    if frame_number == 1:
+                        # Save ROI as PNG only for the first frame
+                        roi_image_filename = os.path.join(self.output_folder, f"roi{idx}_frame.png")
+                        cv2.imwrite(roi_image_filename, roi)
+
+                elapsed_time = time.time() - start_time
+                if elapsed_time >= 600:  # Stop processing after 600 seconds
+                    break
+
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+            self.cap.release()
+            cv2.destroyAllWindows()
+
+            plt.figure(figsize=(12, 6))
+            frames = range(1, len(roi_frames[0]) + 1)
+            for idx, data_points in enumerate(roi_frames, start=1):
+                plt.plot(frames, data_points, label=f'ROI {idx}')
+
+            plt.xlabel('Frames')
+            plt.ylabel('Normalized Intensity')
+            plt.title('Normalized Intensity Data for Selected ROIs')
+            plt.legend()
+            plt.grid(True)
+            plt.tight_layout()
+
+            plt.savefig(os.path.join(self.output_folder, "graph.png"))
+            plt.close()
+
+            for idx, data_points in enumerate(roi_frames, start=1):
+                with open(os.path.join(self.output_folder, f"roi{idx}_data.txt"), "w") as file:
+                    for data_point in data_points:
+                        file.write(str(data_point) + "\n")
+
+            messagebox.showinfo("Info", f"Graph generated and data saved to {self.output_folder}")
+        else:
+            if not hasattr(self, 'cap'):
+                messagebox.showerror("Error", "Please select a video file.")
+            elif len(self.selected_points) != self.num_roi:
+                messagebox.showerror("Error", f"Please select exactly {self.num_roi} points for the ROIs.")
+            else:
+                messagebox.showerror("Error", "Number of ROIs should be between 1 and 10.")
+
+
+root = Tk()
+app = InsectMotion(root)
+app.center_window()
+root.mainloop()
