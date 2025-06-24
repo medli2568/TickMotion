@@ -6,4 +6,4 @@ This app offers 2 analyses:
   another produce png image that visualize active (white) vs. inactive (black) pixels.
 Both analyses are customizable, allowing users to optimize the settings to best fit the requirements of their experiment.
 
-For any troubleshooting or help in designing the experiment, please contact: matej.medla@savba.sk
+For any troubleshooting or help in designing the experiments, please contact: matej.medla@savba.sk
