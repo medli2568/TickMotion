@@ -1,4 +1,4 @@
-# InsectMotion
+# TickMotion
 A user-friendly application that helps analyze muscle contractions and other movements from the video files.
 Originally developed to analyze movements in Insects, however it can be applied to detect any movement in the video.
 This app offers 2 analyses:
