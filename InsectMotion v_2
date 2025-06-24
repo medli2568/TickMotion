@@ -8,7 +8,7 @@ import threading
 import time
 
 
-class InsectMotion:
+class TickMotion:
     def __init__(self, master):
         self.load_video_for_prediction = self.load_video_for_prediction  # Fix: Set the function reference
         self.select_video_for_prediction = self.select_video_for_prediction
@@ -21,7 +21,7 @@ class InsectMotion:
         self.bottom_entry = None
         self.num_roi = None  # Define num_roi as an instance attribute
         self.master = master
-        self.master.title("InsectMotion")
+        self.master.title("TickMotion")
         self.frame_params = None
 
         # New attributes for storing default values
@@ -73,7 +73,7 @@ class InsectMotion:
     def create_start_step(self):
         self.clear_frame()
 
-        (Label(self.master, text="Welcome to InsectMotion!", font=("Arial", 11, "normal"))
+        (Label(self.master, text="Welcome to TickMotion!", font=("Arial", 11, "normal"))
          .grid(row=0, column=0, columnspan=4, pady=0, padx=10, sticky="nsew"))
 
         # Set a fixed button height
@@ -428,7 +428,7 @@ class InsectMotion:
     def show_about(self):
         # Not a static method, ignore
         about_window = Tk()
-        about_window.title("InsectMotion Manual")
+        about_window.title("TickMotion Manual")
 
         about_text = """
 
@@ -437,7 +437,7 @@ The GA begins by clicking on the button: “Graphical Analysis”. The final out
 
 1. Number of ROIs: In the first step, you have to type the number of Regions of Interest (ROI), between 1 and 10 (mostly due to maintain the whole analysis process smooth). Each ROI will undergo analysis separately. More than 10 ROI cannot be analyzed at the same time. 
 
-2. Select Video and ROI: In this step navigate InsectMotion to the folder and select (double-click) a video file. InsectMotion supports multiple file types: .mp4, .avi, .mov. Continue in this step by selecting (left-click) the ROI. Application will automatically stop the selecting process and the video file will be closed once the number of selected ROI corresponds the number established in the previous step. 
+2. Select Video and ROI: In this step navigate TickMotion to the folder and select (double-click) a video file. TickMotion supports multiple file types: .mp4, .avi, .mov. Continue in this step by selecting (left-click) the ROI. Application will automatically stop the selecting process and the video file will be closed once the number of selected ROI corresponds the number established in the previous step. 
 * Note: Please, DO NOT close the video file during selection process. If you intend to change selected ROI, let the app close it automatically (explained above) and repeat this step directly in the app. The graph shows results from any movement captured on the video. Try to select all ROI from segments of the video, where movements are clear, muscle contractions are repetitive and/or the background bias is the lowest.
 
 3. Frame Parameters (dimensions): To enhance the efficiency of the analysis, and to target specifically contracting or moving segments of a video file, squares are created around each ROI. The frame size is customizable, with the default dimensions set as follows (in pixels): "-x" = 50, "+x" = 50, "+y" = 50, "-y" = 50. Selecting alternative dimensions is confirmed by clicking the button: "Update Frame Parameters".
@@ -456,7 +456,7 @@ The GA begins by clicking on the button: “Graphical Analysis”. The final out
                         ******************************
 
 B. Pixel Activity Analysis (PAA)
-The PAA starts by clicking on the button: “Pixel Activity Analysis”. As a result, InsectMotion provides a PNG image of active and inactive pixels from the video. It calculates the activity of each pixel separately, when it met the preset settings, active pixels will be shown as white, otherwise as black. 
+The PAA starts by clicking on the button: “Pixel Activity Analysis”. As a result, TickMotion provides a PNG image of active and inactive pixels from the video. It calculates the activity of each pixel separately, when it met the preset settings, active pixels will be shown as white, otherwise as black. 
 
 1. Choose Video: The first step in the PAA is similar to the GA, navigating to the folder and selecting a video file (again, multiple video file types are supported). Selecting of ROI is not needed in this step, as the PNG will be generated for the whole video automatically.
 
@@ -640,6 +640,6 @@ The PAA starts by clicking on the button: “Pixel Activity Analysis”. As a re
 
 
 root = Tk()
-app = InsectMotion(root)
+app = TickMotion(root)
 app.center_window()
 root.mainloop()
