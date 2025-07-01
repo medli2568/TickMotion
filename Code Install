@@ -1,3 +1,5 @@
+Both versions of the script, “TickMotion” and “TickMotion v_2”, can be copied into Integrated Development Environment (IDE), e.g., PyCharm and run directly as a Python code.
+If you prefer to use the script as a standalone tool/application, you’ll need to follow the installation steps outlined below:
 In the command prompt navigate to the folder where your python file is located,
 type first command: pip install pyinstaller and process. 
 If you do not have the latest version of pip, you can easily upgrade it by typing: python –m pip --upgrade pip. 
